@@ -624,13 +624,17 @@ async function joinRoom() {
   peer.on("error", (err) => {
     warn("PeerJS error:", err.type, err.message);
     addSystemMsg(`Connection error: ${err.type}`);
-    if (err.type === "unavailable-id" && isHost) {
-      addSystemMsg("Room name taken, joining as guest instead...");
-      isHost = false;
-      window.location.hash = "";
-      peer.destroy();
-      peer = null;
-      setTimeout(joinRoom, 500);
+    if (err.type === "unavailable-id") {
+      if (isHost) {
+        addSystemMsg("Room name taken, joining as guest...");
+        window.location.hash = roomName;
+        isHost = false;
+        peer.destroy();
+        peer = null;
+        setTimeout(joinRoom, 500);
+      } else {
+        addSystemMsg("Could not connect - try a different room name");
+      }
     }
   });
 
