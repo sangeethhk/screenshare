@@ -49,6 +49,12 @@ const userCount = $("userCount");
 const chatMessages = $("chatMessages");
 const chatInput = $("chatInput");
 const chatSendBtn = $("chatSendBtn");
+const chatOverlay = $("chatOverlay");
+const chatToggleBtn = $("chatToggleBtn");
+const chatCloseBtn = $("chatCloseBtn");
+const chatMessagesMobile = $("chatMessagesMobile");
+const chatInputMobile = $("chatInputMobile");
+const chatSendBtnMobile = $("chatSendBtnMobile");
 const mainLobby = $("mainLobby");
 const loginForm = $("loginForm");
 const registerForm = $("registerForm");
@@ -255,6 +261,31 @@ if (session) {
   enterLobby(session.user, session.display);
 }
 
+/* ── Mobile chat overlay ────────────────────────── */
+
+chatToggleBtn.addEventListener("click", () => {
+  chatOverlay.classList.add("open");
+  chatInputMobile.focus();
+});
+
+chatCloseBtn.addEventListener("click", () => {
+  chatOverlay.classList.remove("open");
+});
+
+function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  addChatMsg(username, text);
+  broadcastData(JSON.stringify({ type: "chat", author: username, text }));
+  chatInput.value = "";
+  chatInputMobile.value = "";
+}
+
+chatSendBtnMobile.addEventListener("click", sendChat);
+chatInputMobile.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendChat();
+});
+
 /* ── Room password toggle ───────────────────────── */
 
 roomIdInput.addEventListener("input", () => {
@@ -299,7 +330,7 @@ async function getLocalStream() {
   }
 }
 
-function addChatMsg(author, text, isSystem) {
+function appendChatMsg(container, author, text, isSystem) {
   const el = document.createElement("div");
   el.className = isSystem ? "chat-msg system" : "chat-msg";
   if (isSystem) {
@@ -314,8 +345,13 @@ function addChatMsg(author, text, isSystem) {
     el.appendChild(a);
     el.appendChild(t);
   }
-  chatMessages.appendChild(el);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function addChatMsg(author, text, isSystem) {
+  appendChatMsg(chatMessages, author, text, isSystem);
+  appendChatMsg(chatMessagesMobile, author, text, isSystem);
 }
 
 function addSystemMsg(text) {
@@ -759,6 +795,7 @@ function leaveRoom() {
     .querySelectorAll(".video-container:not(#selfContainer)")
     .forEach((c) => c.remove());
   chatMessages.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
+  chatMessagesMobile.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
   room.style.display = "none";
   lobby.style.display = "flex";
   showMainLobby();
@@ -916,15 +953,9 @@ screenBtn.addEventListener("click", () =>
   sharingScreen ? stopScreenShare() : startScreenShare()
 );
 leaveBtn.addEventListener("click", leaveRoom);
-chatSendBtn.addEventListener("click", () => {
-  const text = chatInput.value.trim();
-  if (!text) return;
-  addChatMsg(username, text);
-  broadcastData(JSON.stringify({ type: "chat", author: username, text }));
-  chatInput.value = "";
-});
+chatSendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") chatSendBtn.click();
+  if (e.key === "Enter") sendChat();
 });
 
 window.addEventListener("beforeunload", () => {
