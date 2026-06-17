@@ -203,8 +203,24 @@ function handleDataMessage(id, raw) {
     case "welcome":
       peerNames[id] = data.name;
       addSystemMsg(`Connected to room`);
-      for (const pid in data.peers) {
-        peerNames[pid] = data.peers[pid];
+
+      function callPeer(pid) {
+        if (!localStream || peers[pid]) return;
+        try {
+          const mediaCall = peer.call(pid, localStream);
+          mediaCall.on("stream", (remoteStream) => {
+            const container = getOrCreateVideoContainer(pid, peerNames[pid] || pid.slice(0, 6));
+            const video = document.getElementById(`video-${pid}`);
+            if (video) video.srcObject = remoteStream;
+            peers[pid] = mediaCall;
+          });
+          mediaCall.on("close", () => removePeer(pid));
+        } catch (e) {
+          console.warn("Failed to call", pid, e.message);
+        }
+      }
+      function connectData(pid) {
+        if (dataConns[pid]) return;
         try {
           const conn = peer.connect(pid, { reliable: true });
           conn.on("open", () => {
@@ -213,12 +229,18 @@ function handleDataMessage(id, raw) {
           });
           conn.on("data", (d) => handleDataMessage(pid, d));
           conn.on("close", () => removePeer(pid));
-
-          peer.call(pid, localStream);
         } catch (e) {
-          console.warn("Failed to connect to", pid, e.message);
+          console.warn("Failed data connect to", pid, e.message);
         }
       }
+
+      for (const pid in data.peers) {
+        peerNames[pid] = data.peers[pid];
+        connectData(pid);
+        callPeer(pid);
+      }
+
+      callPeer(id);
       updateUserList();
       break;
     case "info":
