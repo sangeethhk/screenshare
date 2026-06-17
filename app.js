@@ -55,6 +55,7 @@ const chatCloseBtn = $("chatCloseBtn");
 const chatMessagesMobile = $("chatMessagesMobile");
 const chatInputMobile = $("chatInputMobile");
 const chatSendBtnMobile = $("chatSendBtnMobile");
+const fullscreenBtn = $("fullscreenBtn");
 const mainLobby = $("mainLobby");
 const loginForm = $("loginForm");
 const registerForm = $("registerForm");
@@ -953,6 +954,13 @@ screenBtn.addEventListener("click", () =>
   sharingScreen ? stopScreenShare() : startScreenShare()
 );
 leaveBtn.addEventListener("click", leaveRoom);
+fullscreenBtn.addEventListener("click", () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+});
 chatSendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendChat();
