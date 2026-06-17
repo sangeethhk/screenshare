@@ -265,6 +265,7 @@ if (session) {
 /* ── Mobile chat overlay ────────────────────────── */
 
 chatToggleBtn.addEventListener("click", () => {
+  syncChatToMobile();
   chatOverlay.classList.add("open");
   chatInputMobile.focus();
 });
@@ -331,7 +332,7 @@ async function getLocalStream() {
   }
 }
 
-function appendChatMsg(container, author, text, isSystem) {
+function addChatMsg(author, text, isSystem) {
   const el = document.createElement("div");
   el.className = isSystem ? "chat-msg system" : "chat-msg";
   if (isSystem) {
@@ -346,13 +347,13 @@ function appendChatMsg(container, author, text, isSystem) {
     el.appendChild(a);
     el.appendChild(t);
   }
-  container.appendChild(el);
-  container.scrollTop = container.scrollHeight;
+  chatMessages.appendChild(el);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addChatMsg(author, text, isSystem) {
-  appendChatMsg(chatMessages, author, text, isSystem);
-  appendChatMsg(chatMessagesMobile, author, text, isSystem);
+function syncChatToMobile() {
+  chatMessagesMobile.innerHTML = chatMessages.innerHTML;
+  chatMessagesMobile.scrollTop = chatMessagesMobile.scrollHeight;
 }
 
 function addSystemMsg(text) {
@@ -796,7 +797,6 @@ function leaveRoom() {
     .querySelectorAll(".video-container:not(#selfContainer)")
     .forEach((c) => c.remove());
   chatMessages.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
-  chatMessagesMobile.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
   room.style.display = "none";
   lobby.style.display = "flex";
   showMainLobby();
@@ -954,6 +954,20 @@ screenBtn.addEventListener("click", () =>
   sharingScreen ? stopScreenShare() : startScreenShare()
 );
 leaveBtn.addEventListener("click", leaveRoom);
+function toggleVideoFullscreen(vid) {
+  if (!vid) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    vid.requestFullscreen();
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const vid = e.target.closest("video");
+  if (vid && vid.id !== "selfVideo") toggleVideoFullscreen(vid);
+});
+
 fullscreenBtn.addEventListener("click", () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen();
