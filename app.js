@@ -14,6 +14,7 @@ let localStream = null;
 let muted = false;
 let cameraOff = false;
 let sharingScreen = false;
+let roomPassword = "";
 
 const cameraCalls = {};
 const screenCalls = {};
@@ -30,7 +31,6 @@ const roomNameEl = $("roomName");
 const sidebarRoomName = $("sidebarRoomName");
 const joinBtn = $("joinBtn");
 const roomIdInput = $("roomId");
-const usernameInput = $("usernameInput");
 const micBtn = $("micBtn");
 const camBtn = $("camBtn");
 const screenBtn = $("screenBtn");
@@ -49,6 +49,20 @@ const userCount = $("userCount");
 const chatMessages = $("chatMessages");
 const chatInput = $("chatInput");
 const chatSendBtn = $("chatSendBtn");
+const loginForm = $("loginForm");
+const registerForm = $("registerForm");
+const roomLobby = $("roomLobby");
+const loginUser = $("loginUser");
+const loginPass = $("loginPass");
+const registerUser = $("regUser");
+const registerDisplay = $("regDisplay");
+const registerPass = $("regPass");
+const lobbyUsername = $("lobbyUsername");
+const loginError = $("loginError");
+const registerError = $("registerError");
+const roomPass = $("roomPass");
+const roomPassGroup = $("roomPassGroup");
+const lobbyHint = $("lobbyHint");
 
 function log(...args) {
   console.log("[SV]", ...args);
@@ -57,6 +71,168 @@ function log(...args) {
 function warn(...args) {
   console.warn("[SV]", ...args);
 }
+
+/* ── Auth ────────────────────────────────────────── */
+
+const AUTH_KEY = "sv_users";
+const SESSION_KEY = "sv_session";
+
+function getUsers() {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUsers(u) {
+  localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+}
+
+function getSession() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(user) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function hashPass(pw) {
+  let h = 0;
+  for (let i = 0; i < pw.length; i++)
+    h = (Math.imul(31, h) + pw.charCodeAt(i)) | 0;
+  return h.toString(16);
+}
+
+function register() {
+  const user = registerUser.value.trim().toLowerCase();
+  const display = registerDisplay.value.trim() || user;
+  const pass = registerPass.value;
+  const err = $("registerError");
+  if (!user || !pass) {
+    err.textContent = "Username and password required";
+    return;
+  }
+  if (user.length < 2) {
+    err.textContent = "Username must be at least 2 characters";
+    return;
+  }
+  if (pass.length < 3) {
+    err.textContent = "Password must be at least 3 characters";
+    return;
+  }
+  const users = getUsers();
+  if (users[user]) {
+    err.textContent = "Username already taken";
+    return;
+  }
+  err.textContent = "";
+  users[user] = { display, pass: hashPass(pass) };
+  saveUsers(users);
+  saveSession({ user, display });
+  enterLobby(user, display);
+}
+
+function login() {
+  const user = loginUser.value.trim().toLowerCase();
+  const pass = loginPass.value;
+  const err = $("loginError");
+  if (!user || !pass) {
+    err.textContent = "Username and password required";
+    return;
+  }
+  const users = getUsers();
+  const entry = users[user];
+  if (!entry || entry.pass !== hashPass(pass)) {
+    err.textContent = "Invalid username or password";
+    return;
+  }
+  err.textContent = "";
+  saveSession({ user, display: entry.display });
+  enterLobby(user, entry.display);
+}
+
+function logout() {
+  clearSession();
+  location.reload();
+}
+
+function enterLobby(user, display) {
+  username = display;
+  loginForm.style.display = "none";
+  registerForm.style.display = "none";
+  roomLobby.style.display = "block";
+  lobbyUsername.textContent = display;
+  document.getElementById("usernameDisplay").textContent = display;
+  document.getElementById("usernameDisplayBottom").textContent = display;
+  const init = display[0].toUpperCase();
+  document.getElementById("avatarText").textContent = init;
+  document.getElementById("avatarTextBottom").textContent = init;
+  if (window.location.hash) {
+    roomIdInput.value = window.location.hash.slice(1);
+  }
+}
+
+/* ── Show/hide auth forms ───────────────────────── */
+
+$("showRegister").addEventListener("click", (e) => {
+  e.preventDefault();
+  loginForm.style.display = "none";
+  registerForm.style.display = "block";
+  $("registerError").textContent = "";
+});
+
+$("showLogin").addEventListener("click", (e) => {
+  e.preventDefault();
+  registerForm.style.display = "none";
+  loginForm.style.display = "block";
+  $("loginError").textContent = "";
+});
+
+$("loginBtn").addEventListener("click", login);
+$("registerBtn").addEventListener("click", register);
+
+[loginUser, loginPass].forEach((el) => {
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") login();
+  });
+});
+[registerUser, registerDisplay, registerPass].forEach((el) => {
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") register();
+  });
+});
+
+$("logoutBtn").addEventListener("click", logout);
+
+/* ── Auto-login ─────────────────────────────────── */
+
+const session = getSession();
+if (session) {
+  enterLobby(session.user, session.display);
+}
+
+/* ── Room password toggle ───────────────────────── */
+
+roomIdInput.addEventListener("input", () => {
+  const val = roomIdInput.value.trim();
+  const hashRoom = window.location.hash.slice(1);
+  const isNewRoom = !hashRoom;
+  roomPassGroup.style.display = isNewRoom && val ? "block" : "none";
+  lobbyHint.textContent = isNewRoom
+    ? "You will be the host. Optionally set a room password."
+    : "Create a room, share the link, friends connect directly";
+});
+
+/* ── Core app functions ─────────────────────────── */
 
 async function getLocalStream() {
   if (localStream) {
@@ -196,7 +372,6 @@ function callPeerForMedia(pid, stream, store) {
     return null;
   }
   if (store[pid]) {
-    log("callPeerForMedia: already have call for", pid);
     return null;
   }
   try {
@@ -378,6 +553,21 @@ function handleDataMessage(id, raw) {
       }
       removeContainer(id, true);
       break;
+
+    case "auth-req":
+      if (dataConns[id]) {
+        dataConns[id].send(
+          JSON.stringify({ type: "auth-resp", pass: roomPassword })
+        );
+      }
+      break;
+
+    case "auth-resp":
+      if (data.pass && data.pass !== roomPassword) {
+        addSystemMsg("Wrong room password — disconnected");
+        removePeer(id);
+      }
+      break;
   }
 }
 
@@ -536,12 +726,19 @@ function leaveRoom() {
   chatMessages.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
   room.style.display = "none";
   lobby.style.display = "flex";
+  roomLobby.style.display = "block";
+}
+
+function promptRoomPassword() {
+  return new Promise((resolve) => {
+    const pwd = prompt("This room requires a password. Enter room password:");
+    resolve(pwd || "");
+  });
 }
 
 async function joinRoom() {
   const r = roomIdInput.value.trim() || `room-${Date.now()}`;
   roomName = r;
-  username = usernameInput.value.trim() || `User${Math.floor(Math.random() * 1000)}`;
 
   roomNameEl.textContent = r;
   sidebarRoomName.textContent = r;
@@ -567,7 +764,11 @@ async function joinRoom() {
 
   if (isHost) {
     myPeerId = `sv-${r}`;
+    roomPassword = roomPass.value.trim();
     addSystemMsg(`Room "${r}" created. Share the invite link.`);
+    if (roomPassword) {
+      addSystemMsg("Room password is set. Guests will be asked for it.");
+    }
     connectionStatus.textContent = "Hosting - waiting for others...";
     connectionStatus.style.color = "#f9e2af";
     const url = `${window.location.origin}${window.location.pathname}#${r}`;
@@ -668,9 +869,6 @@ joinBtn.addEventListener("click", joinRoom);
 roomIdInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") joinRoom();
 });
-usernameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinRoom();
-});
 micBtn.addEventListener("click", toggleMic);
 camBtn.addEventListener("click", toggleCam);
 screenBtn.addEventListener("click", () =>
@@ -691,7 +889,3 @@ chatInput.addEventListener("keydown", (e) => {
 window.addEventListener("beforeunload", () => {
   if (room.style.display !== "none") leaveRoom();
 });
-
-if (window.location.hash) {
-  roomIdInput.value = window.location.hash.slice(1);
-}
