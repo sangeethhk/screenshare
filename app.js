@@ -296,7 +296,6 @@ function handleDataMessage(id, raw) {
   switch (data.type) {
     case "chat":
       addChatMsg(data.author, data.text);
-      broadcastData(data);
       break;
 
     case "join":
