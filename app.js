@@ -431,7 +431,7 @@ async function joinRoom() {
   connectionStatus.style.color = "#f9e2af";
 
   const hashRoom = window.location.hash.slice(1);
-  isHost = !hashRoom || hashRoom === r;
+  isHost = !hashRoom;
 
   if (isHost) {
     myPeerId = `sv-${r}`;
