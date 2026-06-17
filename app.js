@@ -64,7 +64,7 @@ async function getLocalStream() {
   }
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
+      video: !cameraOff,
       audio: true,
     });
     selfVideo.srcObject = localStream;
@@ -421,12 +421,24 @@ function toggleMic() {
 function toggleCam() {
   cameraOff = !cameraOff;
   camBtn.classList.toggle("off", cameraOff);
-  if (localStream) {
-    localStream.getVideoTracks().forEach((t) => {
-      t.enabled = !cameraOff;
+  if (cameraOff) {
+    if (localStream) {
+      localStream.getVideoTracks().forEach((t) => {
+        t.stop();
+        localStream.removeTrack(t);
+      });
+    }
+    selfVideo.style.display = "none";
+  } else {
+    if (!localStream) localStream = new MediaStream();
+    navigator.mediaDevices.getUserMedia({ video: true }).then((s) => {
+      const newTrack = s.getVideoTracks()[0];
+      if (localStream) {
+        localStream.addTrack(newTrack);
+        selfVideo.srcObject = localStream;
+        selfVideo.style.display = "block";
+      }
     });
-    selfVideo.style.display = cameraOff ? "none" : "block";
-    if (!cameraOff) selfVideo.srcObject = localStream;
   }
 }
 
