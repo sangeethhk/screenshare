@@ -118,8 +118,13 @@ body {
   background: #4752c4;
 }
 
-.switch-auth {
+.auth-toggle {
   margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #313244;
+}
+
+.switch-auth {
   font-size: 13px;
   color: #6c7086;
 }
@@ -132,6 +137,11 @@ body {
 
 .switch-auth a:hover {
   text-decoration: underline;
+}
+
+.auth-sep {
+  margin: 0 6px;
+  color: #585b70;
 }
 
 .form-error {

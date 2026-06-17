@@ -8,8 +8,8 @@
 </head>
 <body>
   <div id="lobby">
-    <!-- Login -->
-    <div class="lobby-card" id="loginForm">
+    <!-- Main lobby: guest + auth in one card -->
+    <div class="lobby-card" id="mainLobby">
       <div class="logo">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
           <rect width="48" height="48" rx="12" fill="#5865F2"/>
@@ -17,7 +17,68 @@
         </svg>
         <h1>ScreenVoice</h1>
       </div>
-      <p class="subtitle">Sign in to continue</p>
+      <p class="subtitle">Voice, chat & screen sharing — no server needed</p>
+
+      <!-- Signed-in bar (hidden for guests) -->
+      <div class="lobby-top" id="signedInBar" style="display:none">
+        <div class="logo-small">
+          <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+            <rect width="48" height="48" rx="12" fill="#5865F2"/>
+            <path d="M16 18h16v4H16zM16 24h16v4H16zM16 30h10v4H16z" fill="#fff"/>
+          </svg>
+          <span id="lobbyUsername">User</span>
+        </div>
+        <button class="btn-logout" id="logoutBtn">Logout</button>
+      </div>
+
+      <!-- Display name (guest or signed in) -->
+      <div class="form-group">
+        <label>Your name</label>
+        <input type="text" id="guestName" placeholder="Enter your name..." autocomplete="off" />
+      </div>
+
+      <!-- Room -->
+      <div class="form-group">
+        <label>Room</label>
+        <div class="room-input">
+          <input type="text" id="roomId" placeholder="Room name..." autocomplete="off" />
+          <button id="joinBtn">Join</button>
+        </div>
+      </div>
+      <div class="form-group" id="roomPassGroup" style="display:none">
+        <label>Room password (optional)</label>
+        <input type="password" id="roomPass" placeholder="Set a room password" autocomplete="off" />
+      </div>
+      <p class="hint" id="lobbyHint">Create a room, share the link, friends connect directly</p>
+
+      <!-- Invite link -->
+      <div class="invite-box" id="inviteBox" style="display:none">
+        <label>Invite link</label>
+        <div class="invite-link-row">
+          <input type="text" id="inviteLink" readonly />
+          <button id="copyBtn">Copy</button>
+        </div>
+      </div>
+
+      <!-- Auth toggle -->
+      <div class="auth-toggle" id="authToggle">
+        <p class="switch-auth">
+          <a href="#" id="showLogin">Sign in</a>
+          <span class="auth-sep">or</span>
+          <a href="#" id="showRegister">Create account</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Login (hidden, overlay style) -->
+    <div class="lobby-card" id="loginForm" style="display:none">
+      <div class="logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="12" fill="#5865F2"/>
+          <path d="M16 18h16v4H16zM16 24h16v4H16zM16 30h10v4H16z" fill="#fff"/>
+        </svg>
+        <h1>Sign In</h1>
+      </div>
       <div id="loginError" class="form-error"></div>
       <div class="form-group">
         <label>Username</label>
@@ -28,19 +89,24 @@
         <input type="password" id="loginPass" placeholder="password" autocomplete="current-password" />
       </div>
       <button class="btn-primary" id="loginBtn">Sign In</button>
-      <p class="switch-auth">No account? <a href="#" id="showRegister">Create one</a></p>
+      <div class="auth-toggle">
+        <p class="switch-auth">
+          <a href="#" id="showLoginBack">Back</a>
+          <span class="auth-sep">or</span>
+          <a href="#" id="showLoginRegister">Create account</a>
+        </p>
+      </div>
     </div>
 
-    <!-- Register -->
+    <!-- Register (hidden, overlay style) -->
     <div class="lobby-card" id="registerForm" style="display:none">
       <div class="logo">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
           <rect width="48" height="48" rx="12" fill="#5865F2"/>
           <path d="M16 18h16v4H16zM16 24h16v4H16zM16 30h10v4H16z" fill="#fff"/>
         </svg>
-        <h1>ScreenVoice</h1>
+        <h1>Create Account</h1>
       </div>
-      <p class="subtitle">Create your account</p>
       <div id="registerError" class="form-error"></div>
       <div class="form-group">
         <label>Username</label>
@@ -55,41 +121,12 @@
         <input type="password" id="regPass" placeholder="choose a password" autocomplete="new-password" />
       </div>
       <button class="btn-primary" id="registerBtn">Create Account</button>
-      <p class="switch-auth">Already have an account? <a href="#" id="showLogin">Sign in</a></p>
-    </div>
-
-    <!-- Room lobby (shown after login) -->
-    <div class="lobby-card" id="roomLobby" style="display:none">
-      <div class="lobby-top">
-        <div class="logo-small">
-          <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="12" fill="#5865F2"/>
-            <path d="M16 18h16v4H16zM16 24h16v4H16zM16 30h10v4H16z" fill="#fff"/>
-          </svg>
-          <span id="lobbyUsername">User</span>
-        </div>
-        <button class="btn-logout" id="logoutBtn">Logout</button>
-      </div>
-      <h2 style="margin:20px 0 8px;font-size:22px;font-weight:700;">Join or create a room</h2>
-      <p class="subtitle" style="margin-bottom:20px;">Share the link with friends to connect</p>
-      <div class="form-group">
-        <label>Room name</label>
-        <div class="room-input">
-          <input type="text" id="roomId" placeholder="Enter room name..." autocomplete="off" />
-          <button id="joinBtn">Join</button>
-        </div>
-      </div>
-      <div class="form-group" id="roomPassGroup" style="display:none">
-        <label>Room password (optional)</label>
-        <input type="password" id="roomPass" placeholder="Set a room password" autocomplete="off" />
-      </div>
-      <p class="hint" id="lobbyHint">Create a room, share the link, friends connect directly</p>
-      <div class="invite-box" id="inviteBox" style="display:none">
-        <label>Invite link</label>
-        <div class="invite-link-row">
-          <input type="text" id="inviteLink" readonly />
-          <button id="copyBtn">Copy</button>
-        </div>
+      <div class="auth-toggle">
+        <p class="switch-auth">
+          <a href="#" id="showRegisterBack">Back</a>
+          <span class="auth-sep">or</span>
+          <a href="#" id="showRegisterLogin">Sign in</a>
+        </p>
       </div>
     </div>
   </div>

@@ -49,9 +49,11 @@ const userCount = $("userCount");
 const chatMessages = $("chatMessages");
 const chatInput = $("chatInput");
 const chatSendBtn = $("chatSendBtn");
+const mainLobby = $("mainLobby");
 const loginForm = $("loginForm");
 const registerForm = $("registerForm");
-const roomLobby = $("roomLobby");
+const signedInBar = $("signedInBar");
+const guestName = $("guestName");
 const loginUser = $("loginUser");
 const loginPass = $("loginPass");
 const registerUser = $("regUser");
@@ -63,6 +65,7 @@ const registerError = $("registerError");
 const roomPass = $("roomPass");
 const roomPassGroup = $("roomPassGroup");
 const lobbyHint = $("lobbyHint");
+const authToggle = $("authToggle");
 
 function log(...args) {
   console.log("[SV]", ...args);
@@ -165,17 +168,25 @@ function logout() {
   location.reload();
 }
 
-function enterLobby(user, display) {
-  username = display;
+function showMainLobby() {
+  mainLobby.style.display = "block";
   loginForm.style.display = "none";
   registerForm.style.display = "none";
-  roomLobby.style.display = "block";
+}
+
+function enterLobby(user, display) {
+  username = display;
+  guestName.value = display;
+  guestName.style.display = "none";
+  signedInBar.style.display = "flex";
+  authToggle.style.display = "none";
   lobbyUsername.textContent = display;
   document.getElementById("usernameDisplay").textContent = display;
   document.getElementById("usernameDisplayBottom").textContent = display;
   const init = display[0].toUpperCase();
   document.getElementById("avatarText").textContent = init;
   document.getElementById("avatarTextBottom").textContent = init;
+  showMainLobby();
   if (window.location.hash) {
     roomIdInput.value = window.location.hash.slice(1);
   }
@@ -185,12 +196,36 @@ function enterLobby(user, display) {
 
 $("showRegister").addEventListener("click", (e) => {
   e.preventDefault();
-  loginForm.style.display = "none";
+  mainLobby.style.display = "none";
   registerForm.style.display = "block";
   $("registerError").textContent = "";
 });
 
 $("showLogin").addEventListener("click", (e) => {
+  e.preventDefault();
+  mainLobby.style.display = "none";
+  loginForm.style.display = "block";
+  $("loginError").textContent = "";
+});
+
+$("showLoginBack").addEventListener("click", (e) => {
+  e.preventDefault();
+  showMainLobby();
+});
+
+$("showRegisterBack").addEventListener("click", (e) => {
+  e.preventDefault();
+  showMainLobby();
+});
+
+$("showLoginRegister").addEventListener("click", (e) => {
+  e.preventDefault();
+  loginForm.style.display = "none";
+  registerForm.style.display = "block";
+  $("registerError").textContent = "";
+});
+
+$("showRegisterLogin").addEventListener("click", (e) => {
   e.preventDefault();
   registerForm.style.display = "none";
   loginForm.style.display = "block";
@@ -726,7 +761,7 @@ function leaveRoom() {
   chatMessages.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
   room.style.display = "none";
   lobby.style.display = "flex";
-  roomLobby.style.display = "block";
+  showMainLobby();
 }
 
 function promptRoomPassword() {
@@ -739,6 +774,10 @@ function promptRoomPassword() {
 async function joinRoom() {
   const r = roomIdInput.value.trim() || `room-${Date.now()}`;
   roomName = r;
+
+  if (!username) {
+    username = guestName.value.trim() || `User${Math.floor(Math.random() * 1000)}`;
+  }
 
   roomNameEl.textContent = r;
   sidebarRoomName.textContent = r;
@@ -866,8 +905,10 @@ copyBtn.addEventListener("click", () => {
 });
 
 joinBtn.addEventListener("click", joinRoom);
-roomIdInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinRoom();
+[guestName, roomIdInput].forEach((el) => {
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") joinRoom();
+  });
 });
 micBtn.addEventListener("click", toggleMic);
 camBtn.addEventListener("click", toggleCam);
