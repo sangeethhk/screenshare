@@ -9,15 +9,15 @@ let myPeerId = "";
 let isHost = false;
 
 let localStream = null;
-let screenStream = null;
 let muted = false;
 let cameraOff = false;
 let sharingScreen = false;
 
-const peers = {};
+const cameraCalls = {};
+const screenCalls = {};
 const dataConns = {};
 const peerNames = {};
-const pendingCalls = {};
+const remoteSharing = {};
 
 const selfVideo = document.getElementById("selfVideo");
 const videoGrid = document.getElementById("videoGrid");
@@ -47,13 +47,11 @@ const chatMessages = document.getElementById("chatMessages");
 const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 
-async function getLocalStream(withVideo = true) {
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-  }
+async function getLocalStream() {
+  if (localStream) localStream.getTracks().forEach((t) => t.stop());
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: withVideo && !cameraOff,
+      video: true,
       audio: true,
     });
     selfVideo.srcObject = localStream;
@@ -62,8 +60,7 @@ async function getLocalStream(withVideo = true) {
     console.warn("Media error:", e.message);
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: true,
+        video: false, audio: true,
       });
       selfVideo.style.display = "none";
     } catch (e2) {
@@ -72,52 +69,26 @@ async function getLocalStream(withVideo = true) {
   }
 }
 
-function addChatMsg(author, text, isSystem = false) {
+function addChatMsg(author, text, isSystem) {
   const el = document.createElement("div");
   el.className = isSystem ? "chat-msg system" : "chat-msg";
   if (isSystem) {
     el.textContent = text;
   } else {
-    const authorSpan = document.createElement("span");
-    authorSpan.className = `author ${author === username ? "author-self" : ""}`;
-    authorSpan.textContent = author;
-    const textSpan = document.createElement("span");
-    textSpan.className = "text";
-    textSpan.textContent = text;
-    el.appendChild(authorSpan);
-    el.appendChild(textSpan);
+    const a = document.createElement("span");
+    a.className = `author ${author === username ? "author-self" : ""}`;
+    a.textContent = author;
+    const t = document.createElement("span");
+    t.className = "text";
+    t.textContent = text;
+    el.appendChild(a);
+    el.appendChild(t);
   }
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addSystemMsg(text) {
-  addChatMsg("", text, true);
-}
-
-function updateUserList() {
-  const existing = userList.querySelectorAll(".user-item:not(#selfUserItem)");
-  existing.forEach((el) => el.remove());
-
-  let count = 1;
-  for (const id in peerNames) {
-    if (id === myPeerId) continue;
-    count++;
-    const div = document.createElement("div");
-    div.className = "user-item";
-    div.id = `user-${id}`;
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.style.background = getColorForPeer(id);
-    avatar.textContent = peerNames[id][0].toUpperCase();
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = peerNames[id];
-    div.appendChild(avatar);
-    div.appendChild(nameSpan);
-    userList.appendChild(div);
-  }
-  userCount.textContent = count;
-}
+function addSystemMsg(text) { addChatMsg("", text, true); }
 
 function getColorForPeer(id) {
   const colors = ["#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#89b4fa", "#cba6f7", "#94e2d5", "#bac2de"];
@@ -126,159 +97,211 @@ function getColorForPeer(id) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function removeVideoContainer(id) {
-  const el = document.getElementById(`container-${id}`);
-  if (el) el.remove();
+function updateUserList() {
+  document.querySelectorAll(".user-item:not(#selfUserItem)").forEach((e) => e.remove());
+  let count = 1;
+  for (const id in peerNames) {
+    if (id === myPeerId) continue;
+    count++;
+    const div = document.createElement("div");
+    div.className = "user-item";
+    div.id = `user-${id}`;
+    const a = document.createElement("div");
+    a.className = "avatar";
+    a.style.background = getColorForPeer(id);
+    a.textContent = peerNames[id][0].toUpperCase();
+    const s = document.createElement("span");
+    s.textContent = peerNames[id];
+    div.appendChild(a);
+    div.appendChild(s);
+    userList.appendChild(div);
+  }
+  userCount.textContent = count;
 }
 
-function getOrCreateVideoContainer(id, name) {
-  let container = document.getElementById(`container-${id}`);
+function getOrCreateContainer(id, name, isScreen) {
+  const suffix = isScreen ? "-screen" : "";
+  let container = document.getElementById(`container-${id}${suffix}`);
   if (!container) {
     container = document.createElement("div");
-    container.className = "video-container";
-    container.id = `container-${id}`;
+    container.className = `video-container${isScreen ? " screen-share" : ""}`;
+    container.id = `container-${id}${suffix}`;
     const video = document.createElement("video");
-    video.id = `video-${id}`;
+    video.id = `video-${id}${suffix}`;
     video.autoplay = true;
     video.playsInline = true;
     container.appendChild(video);
     const label = document.createElement("div");
     label.className = "video-label";
-    label.id = `label-${id}`;
-    label.innerHTML = `<span>${name}</span><span class="mic-icon" id="remoteMic-${id}">&#x1f50a;</span>`;
+    label.id = `label-${id}${suffix}`;
+    label.innerHTML = `<span>${isScreen ? name + "'s screen" : name}</span><span class="mic-icon" id="remoteMic-${id}${suffix}">&#x1f50a;</span>`;
     container.appendChild(label);
     videoGrid.appendChild(container);
   } else {
-    const label = document.getElementById(`label-${id}`);
-    if (label) label.querySelector("span").textContent = name;
+    const label = document.getElementById(`label-${id}${suffix}`);
+    if (label) label.querySelector("span").textContent = isScreen ? (peerNames[id] || id.slice(0, 4)) + "'s screen" : name;
   }
   return container;
 }
 
-function broadcastToPeers(data) {
-  const msg = typeof data === "string" ? data : JSON.stringify(data);
+function removeContainer(id, isScreen) {
+  const suffix = isScreen ? "-screen" : "";
+  const el = document.getElementById(`container-${id}${suffix}`);
+  if (el) el.remove();
+}
+
+function broadcastData(msg) {
+  const m = typeof msg === "string" ? msg : JSON.stringify(msg);
   for (const id in dataConns) {
-    try {
-      dataConns[id].send(msg);
-    } catch (e) {
-      console.warn("Send error to", id, e.message);
+    try { dataConns[id].send(m); } catch {}
+  }
+}
+
+function callPeerForMedia(pid, stream, store) {
+  if (!stream) return null;
+  try {
+    const mc = peer.call(pid, stream);
+    mc.on("stream", (remoteStream) => {
+      const isScreen = store === screenCalls;
+      const container = getOrCreateContainer(pid, peerNames[pid] || pid.slice(0, 4), isScreen);
+      const vid = document.getElementById(`video-${pid}${isScreen ? "-screen" : ""}`);
+      if (vid) vid.srcObject = remoteStream;
+      store[pid] = mc;
+    });
+    mc.on("close", () => {
+      delete store[pid];
+      const isScreen = store === screenCalls;
+      removeContainer(pid, isScreen);
+    });
+    return mc;
+  } catch (e) {
+    console.warn("callPeerForMedia error", pid, e.message);
+    return null;
+  }
+}
+
+function answerCall(call) {
+  if (!localStream) return;
+  call.answer(localStream);
+  call.on("stream", (remoteStream) => {
+    const pid = call.peer;
+    const isScreen = !!remoteSharing[pid];
+
+    if (isScreen) {
+      screenCalls[pid] = call;
+    } else {
+      cameraCalls[pid] = call;
     }
+
+    const container = getOrCreateContainer(pid, peerNames[pid] || pid.slice(0, 4), isScreen);
+    const vid = document.getElementById(`video-${pid}${isScreen ? "-screen" : ""}`);
+    if (vid) vid.srcObject = remoteStream;
+  });
+  call.on("close", () => {
+    const pid = call.peer;
+    delete cameraCalls[pid];
+    delete screenCalls[pid];
+    removeContainer(pid, false);
+    removeContainer(pid, true);
+  });
+}
+
+function connectDataToPeer(pid) {
+  if (dataConns[pid]) return;
+  try {
+    const conn = peer.connect(pid, { reliable: true });
+    conn.on("open", () => {
+      dataConns[pid] = conn;
+      conn.send(JSON.stringify({ type: "info", name: username, id: myPeerId }));
+    });
+    conn.on("data", (d) => handleDataMessage(pid, d));
+    conn.on("close", () => removePeer(pid));
+  } catch (e) {
+    console.warn("connectData error", pid, e.message);
   }
 }
 
 function handleDataMessage(id, raw) {
   let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return;
-  }
+  try { data = JSON.parse(raw); } catch { return; }
 
   switch (data.type) {
     case "chat":
       addChatMsg(data.author, data.text);
-      broadcastToPeers(data);
+      broadcastData(data);
       break;
+
     case "join":
       peerNames[id] = data.name;
       addSystemMsg(`${data.name} joined`);
       updateUserList();
-
       for (const pid in dataConns) {
-        if (pid !== id) {
-          dataConns[pid].send(JSON.stringify({ type: "info", name: data.name, id }));
-        }
+        if (pid !== id) dataConns[pid].send(JSON.stringify({ type: "info", name: data.name, id }));
       }
-
       if (dataConns[id]) {
         dataConns[id].send(JSON.stringify({
           type: "welcome",
           name: username,
-          peers: Object.fromEntries(
-            Object.entries(peerNames).filter(([k]) => k !== id && k !== myPeerId)
-          ),
+          peers: Object.fromEntries(Object.entries(peerNames).filter(([k]) => k !== id && k !== myPeerId)),
         }));
       }
       break;
+
     case "welcome":
       peerNames[id] = data.name;
       addSystemMsg(`Connected to room`);
-
-      function callPeer(pid) {
-        if (!localStream || peers[pid]) return;
-        try {
-          const mediaCall = peer.call(pid, localStream);
-          mediaCall.on("stream", (remoteStream) => {
-            const container = getOrCreateVideoContainer(pid, peerNames[pid] || pid.slice(0, 6));
-            const video = document.getElementById(`video-${pid}`);
-            if (video) video.srcObject = remoteStream;
-            peers[pid] = mediaCall;
-          });
-          mediaCall.on("close", () => removePeer(pid));
-        } catch (e) {
-          console.warn("Failed to call", pid, e.message);
-        }
-      }
-      function connectData(pid) {
-        if (dataConns[pid]) return;
-        try {
-          const conn = peer.connect(pid, { reliable: true });
-          conn.on("open", () => {
-            dataConns[pid] = conn;
-            conn.send(JSON.stringify({ type: "info", name: username, id: myPeerId }));
-          });
-          conn.on("data", (d) => handleDataMessage(pid, d));
-          conn.on("close", () => removePeer(pid));
-        } catch (e) {
-          console.warn("Failed data connect to", pid, e.message);
-        }
-      }
-
       for (const pid in data.peers) {
         peerNames[pid] = data.peers[pid];
-        connectData(pid);
-        callPeer(pid);
+        connectDataToPeer(pid);
+        callPeerForMedia(pid, localStream, cameraCalls);
       }
-
-      callPeer(id);
+      callPeerForMedia(id, localStream, cameraCalls);
       updateUserList();
       break;
+
     case "info":
       peerNames[data.id || id] = data.name;
       updateUserList();
       addSystemMsg(`${data.name} connected`);
       break;
+
     case "leave":
       addSystemMsg(`${peerNames[id] || "Someone"} left`);
       removePeer(id);
       break;
-    case "mute":
-      const micIcon = document.getElementById(`remoteMic-${id}`);
-      if (micIcon) {
-        micIcon.className = `mic-icon${data.muted ? " muted" : ""}`;
-        micIcon.innerHTML = data.muted ? "&#x1f507;" : "&#x1f50a;";
+
+    case "mute": {
+      const el = document.getElementById(`remoteMic-${id}`);
+      if (el) {
+        el.className = `mic-icon${data.muted ? " muted" : ""}`;
+        el.innerHTML = data.muted ? "&#x1f507;" : "&#x1f50a;";
       }
       break;
-    case "screen":
-      const container = document.getElementById(`container-${id}`);
-      if (container) container.classList.toggle("screen-share", data.active);
+    }
+
+    case "screen-start":
+      remoteSharing[id] = true;
       break;
-    case "camera":
+
+    case "screen-stop":
+      delete remoteSharing[id];
+      if (screenCalls[id]) {
+        try { screenCalls[id].close(); } catch {}
+        delete screenCalls[id];
+      }
+      removeContainer(id, true);
       break;
   }
 }
 
 function removePeer(id) {
-  if (dataConns[id]) {
-    try { dataConns[id].close(); } catch {}
-    delete dataConns[id];
-  }
-  if (peers[id]) {
-    try { peers[id].close(); } catch {}
-    delete peers[id];
-  }
+  if (dataConns[id]) { try { dataConns[id].close(); } catch {} delete dataConns[id]; }
+  if (cameraCalls[id]) { try { cameraCalls[id].close(); } catch {} delete cameraCalls[id]; }
+  if (screenCalls[id]) { try { screenCalls[id].close(); } catch {} delete screenCalls[id]; }
   delete peerNames[id];
-  removeVideoContainer(id);
+  delete remoteSharing[id];
+  removeContainer(id, false);
+  removeContainer(id, true);
   updateUserList();
 }
 
@@ -286,63 +309,54 @@ function toggleMic() {
   muted = !muted;
   if (localStream) localStream.getAudioTracks().forEach((t) => (t.enabled = !muted));
   micBtn.classList.toggle("off", muted);
-  document.getElementById("selfMicIcon").className = `mic-icon${muted ? " muted" : ""}`;
-  document.getElementById("selfMicIcon").innerHTML = muted ? "&#x1f507;" : "&#x1f50a;";
-  broadcastToPeers(JSON.stringify({ type: "mute", muted }));
+  const icon = document.getElementById("selfMicIcon");
+  icon.className = `mic-icon${muted ? " muted" : ""}`;
+  icon.innerHTML = muted ? "&#x1f507;" : "&#x1f50a;";
+  broadcastData(JSON.stringify({ type: "mute", muted }));
 }
 
 function toggleCam() {
   cameraOff = !cameraOff;
   camBtn.classList.toggle("off", cameraOff);
   if (localStream) {
-    const tracks = localStream.getVideoTracks();
+    localStream.getVideoTracks().forEach((t) => {
+      if (cameraOff) { t.enabled = false; } else { t.enabled = true; }
+    });
     if (cameraOff) {
-      tracks.forEach((t) => {
-        t.stop();
-        localStream.removeTrack(t);
-      });
       selfVideo.style.display = "none";
     } else {
-      navigator.mediaDevices.getUserMedia({ video: true }).then((s) => {
-        const newTrack = s.getVideoTracks()[0];
-        localStream.addTrack(newTrack);
-        selfVideo.srcObject = localStream;
-        selfVideo.style.display = "block";
-        for (const id in peers) {
-          const sender = peers[id].getSenders().find((s) => s.track?.kind === "video");
-          if (sender) sender.replaceTrack(newTrack);
-        }
-      });
+      selfVideo.style.display = "block";
+      selfVideo.srcObject = localStream;
     }
   }
-  broadcastToPeers(JSON.stringify({ type: "camera", off: cameraOff }));
 }
 
 async function startScreenShare() {
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    screenStream.getVideoTracks()[0].onended = stopScreenShare;
+    const ss = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    if (!ss || !ss.getVideoTracks().length) return;
+
+    screenStream = ss;
     sharingScreen = true;
     screenBtn.classList.add("screen-active");
+    screenStream.getVideoTracks()[0].onended = stopScreenShare;
 
-    const screenTrack = screenStream.getVideoTracks()[0];
-    if (localStream) {
-      const oldTrack = localStream.getVideoTracks()[0];
-      if (oldTrack && !cameraOff) {
-        localStream.removeTrack(oldTrack);
-        oldTrack.stop();
+    selfVideo.srcObject = screenStream;
+
+    broadcastData(JSON.stringify({ type: "screen-start" }));
+
+    setTimeout(() => {
+      for (const pid in cameraCalls) {
+        callPeerForMedia(pid, screenStream, screenCalls);
       }
-    } else {
-      localStream = new MediaStream();
-    }
-    localStream.addTrack(screenTrack);
-    selfVideo.srcObject = localStream;
-
-    for (const id in peers) {
-      const sender = peers[id].getSenders().find((s) => s.track?.kind === "video");
-      if (sender) sender.replaceTrack(screenTrack);
-    }
-    broadcastToPeers(JSON.stringify({ type: "screen", active: true }));
+      if (isHost) {
+        for (const pid in dataConns) {
+          if (!cameraCalls[pid] && !screenCalls[pid] && pid !== myPeerId) {
+            callPeerForMedia(pid, screenStream, screenCalls);
+          }
+        }
+      }
+    }, 200);
   } catch (e) {
     console.warn("Screen share cancelled");
   }
@@ -352,73 +366,62 @@ function stopScreenShare() {
   if (!sharingScreen) return;
   sharingScreen = false;
   screenBtn.classList.remove("screen-active");
+
+  for (const pid in screenCalls) {
+    try { screenCalls[pid].close(); } catch {}
+    delete screenCalls[pid];
+    removeContainer(pid, true);
+  }
+  broadcastData(JSON.stringify({ type: "screen-stop" }));
+
   if (screenStream) {
     screenStream.getTracks().forEach((t) => t.stop());
     screenStream = null;
   }
-  if (!cameraOff) {
-    navigator.mediaDevices.getUserMedia({ video: true }).then((s) => {
-      const camTrack = s.getVideoTracks()[0];
-      if (localStream) {
-        const oldTrack = localStream.getVideoTracks()[0];
-        if (oldTrack) localStream.removeTrack(oldTrack);
-        localStream.addTrack(camTrack);
-      }
-      selfVideo.srcObject = localStream;
-      for (const id in peers) {
-        const sender = peers[id].getSenders().find((s) => s.track?.kind === "video");
-        if (sender) sender.replaceTrack(camTrack);
-      }
-    });
+
+  if (localStream) {
+    selfVideo.srcObject = localStream;
+    selfVideo.style.display = cameraOff ? "none" : "block";
   }
-  broadcastToPeers(JSON.stringify({ type: "screen", active: false }));
 }
 
+let screenStream = null;
+
 function leaveRoom() {
-  broadcastToPeers(JSON.stringify({ type: "leave" }));
+  broadcastData(JSON.stringify({ type: "leave" }));
   for (const id in dataConns) removePeer(id);
-  for (const id in peers) removePeer(id);
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-  if (screenStream) {
-    screenStream.getTracks().forEach((t) => t.stop());
-    screenStream = null;
-  }
-  if (peer) {
-    peer.destroy();
-    peer = null;
-  }
-  sharingScreen = false;
-  muted = false;
-  cameraOff = false;
+  for (const id in cameraCalls) removePeer(id);
+  for (const id in screenCalls) removePeer(id);
+
+  if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
+  if (screenStream) { screenStream.getTracks().forEach((t) => t.stop()); screenStream = null; }
+  if (peer) { peer.destroy(); peer = null; }
+
+  sharingScreen = false; muted = false; cameraOff = false;
   screenBtn.classList.remove("screen-active");
   camBtn.classList.remove("off");
   micBtn.classList.remove("off");
   isHost = false;
 
-  const containers = videoGrid.querySelectorAll(".video-container:not(#selfContainer)");
-  containers.forEach((c) => c.remove());
+  document.querySelectorAll(".video-container:not(#selfContainer)").forEach((c) => c.remove());
   chatMessages.innerHTML = '<div class="chat-welcome">Chat messages appear here</div>';
-
   room.style.display = "none";
   lobby.style.display = "flex";
 }
 
 async function joinRoom() {
-  const room = roomIdInput.value.trim() || `room-${Date.now()}`;
-  roomName = room;
+  const r = roomIdInput.value.trim() || `room-${Date.now()}`;
+  roomName = r;
   username = usernameInput.value.trim() || `User${Math.floor(Math.random() * 1000)}`;
 
-  roomNameEl.textContent = room;
-  sidebarRoomName.textContent = room;
+  roomNameEl.textContent = r;
+  sidebarRoomName.textContent = r;
   selfName.textContent = username;
   usernameDisplay.textContent = username;
   usernameDisplayBottom.textContent = username;
-  const initial = username[0].toUpperCase();
-  avatarText.textContent = initial;
-  avatarTextBottom.textContent = initial;
+  const init = username[0].toUpperCase();
+  avatarText.textContent = init;
+  avatarTextBottom.textContent = init;
 
   await getLocalStream();
 
@@ -428,70 +431,51 @@ async function joinRoom() {
   connectionStatus.style.color = "#f9e2af";
 
   const hashRoom = window.location.hash.slice(1);
-  isHost = !hashRoom || hashRoom === room;
+  isHost = !hashRoom || hashRoom === r;
 
   if (isHost) {
-    myPeerId = `sv-${room}`;
-    addSystemMsg(`You created "${room}". Share the invite link with friends.`);
+    myPeerId = `sv-${r}`;
+    addSystemMsg(`Room "${r}" created. Share the invite link.`);
     connectionStatus.textContent = "Hosting — waiting for others";
     connectionStatus.style.color = "#f9e2af";
-
-    const url = `${window.location.origin}${window.location.pathname}#${room}`;
+    const url = `${window.location.origin}${window.location.pathname}#${r}`;
     inviteBox.style.display = "block";
     inviteLink.value = url;
   } else {
-    myPeerId = `sv-${room}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    addSystemMsg(`Joining "${room}"...`);
+    myPeerId = `sv-${r}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    addSystemMsg(`Joining "${r}"...`);
     connectionStatus.textContent = "Connecting to host...";
     connectionStatus.style.color = "#f9e2af";
   }
 
   peer = new Peer(myPeerId, {
-    host: PEER_HOST,
-    port: PEER_PORT,
-    path: PEER_PATH,
+    host: PEER_HOST, port: PEER_PORT, path: PEER_PATH,
     config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
   });
 
   peer.on("open", (id) => {
     myPeerId = id;
     peerNames[id] = username;
-
     if (!isHost) {
-      const hostId = `sv-${room}`;
+      const hostId = `sv-${r}`;
       const conn = peer.connect(hostId, { reliable: true });
       conn.on("open", () => {
         dataConns[hostId] = conn;
         conn.send(JSON.stringify({ type: "join", name: username }));
       });
       conn.on("data", (d) => handleDataMessage(hostId, d));
-      conn.on("close", () => {
-        addSystemMsg("Lost connection to room host");
-        removePeer(hostId);
-      });
+      conn.on("close", () => { addSystemMsg("Lost connection to host"); removePeer(hostId); });
     }
-
     updateUserList();
   });
 
   peer.on("connection", (conn) => {
-    conn.on("open", () => {
-      dataConns[conn.peer] = conn;
-    });
+    conn.on("open", () => { dataConns[conn.peer] = conn; });
     conn.on("data", (d) => handleDataMessage(conn.peer, d));
     conn.on("close", () => removePeer(conn.peer));
   });
 
-  peer.on("call", (call) => {
-    call.answer(localStream);
-    call.on("stream", (remoteStream) => {
-      const container = getOrCreateVideoContainer(call.peer, peerNames[call.peer] || call.peer.slice(0, 6));
-      const video = document.getElementById(`video-${call.peer}`);
-      if (video) video.srcObject = remoteStream;
-      peers[call.peer] = call;
-    });
-    call.on("close", () => removePeer(call.peer));
-  });
+  peer.on("call", answerCall);
 
   peer.on("error", (err) => {
     console.error("PeerJS error:", err);
@@ -519,28 +503,20 @@ copyBtn.addEventListener("click", () => {
 });
 
 joinBtn.addEventListener("click", joinRoom);
-roomIdInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinRoom();
-});
-usernameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinRoom();
-});
-
+roomIdInput.addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+usernameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
 micBtn.addEventListener("click", toggleMic);
 camBtn.addEventListener("click", toggleCam);
 screenBtn.addEventListener("click", () => (sharingScreen ? stopScreenShare() : startScreenShare()));
 leaveBtn.addEventListener("click", leaveRoom);
-
 chatSendBtn.addEventListener("click", () => {
   const text = chatInput.value.trim();
   if (!text) return;
   addChatMsg(username, text);
-  broadcastToPeers(JSON.stringify({ type: "chat", author: username, text }));
+  broadcastData(JSON.stringify({ type: "chat", author: username, text }));
   chatInput.value = "";
 });
-chatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") chatSendBtn.click();
-});
+chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") chatSendBtn.click(); });
 
 window.addEventListener("beforeunload", () => {
   if (document.getElementById("room").style.display !== "none") leaveRoom();
