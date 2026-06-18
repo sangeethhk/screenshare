@@ -1038,8 +1038,9 @@ async function joinRoom() {
   connectionStatus.style.color = "#f9e2af";
 
   const hashRoom = window.location.hash.slice(1);
-  isHost = !hashRoom;
-  log(`isHost: ${isHost} (hash: "${hashRoom}")`);
+  isHost = !hashRoom || hashRoom !== r;
+  log(`isHost: ${isHost} (hash: "${hashRoom}", room: "${r}")`);
+  if (!isHost) window.location.hash = r;
 
   if (isHost) {
     myPeerId = `sv-${r}`;
@@ -1114,19 +1115,7 @@ async function joinRoom() {
 
   peer.on("error", (err) => {
     warn("PeerJS error:", err.type, err.message);
-    addSystemMsg(`Connection error: ${err.type}`);
-    if (err.type === "unavailable-id") {
-      if (isHost) {
-        addSystemMsg("Room name taken, joining as guest...");
-        window.location.hash = roomName;
-        isHost = false;
-        peer.destroy();
-        peer = null;
-        setTimeout(joinRoom, 500);
-      } else {
-        addSystemMsg("Could not connect - try a different room name");
-      }
-    }
+    addSystemMsg(`Error: ${err.type}. ${err.type === "unavailable-id" ? "Room name already in use." : err.type === "peer-unavailable" ? "Host not found - the room may be empty." : ""} Try again.`);
   });
 
   peer.on("disconnected", () => {
