@@ -60,6 +60,19 @@
         </div>
       </div>
 
+      <!-- Friends -->
+      <div class="friends-section">
+        <div class="friends-header">
+          <span>Friends</span>
+          <button class="btn-add-friend" id="addFriendBtn">+ Add</button>
+        </div>
+        <div class="friend-input-row" id="friendInputRow" style="display:none">
+          <input type="text" id="friendNameInput" placeholder="Enter username..." />
+          <button id="friendConfirmBtn">Add</button>
+        </div>
+        <div class="friends-list" id="lobbyFriendsList"></div>
+      </div>
+
       <!-- Auth toggle -->
       <div class="auth-toggle" id="authToggle">
         <p class="switch-auth">
@@ -143,6 +156,13 @@
         <div class="channel" id="voiceChannel">
           <span class="hash">#</span> voice
         </div>
+      </div>
+      <div class="friends-section sidebar-friends" id="sidebarFriends">
+        <div class="friends-header">
+          <span>Friends</span>
+          <button class="btn-add-friend-sm" id="sidebarAddFriend">+</button>
+        </div>
+        <div class="friends-list" id="sidebarFriendsList"></div>
       </div>
       <div class="user-list" id="userList">
         <div class="user-list-header">Online — <span id="userCount">1</span></div>

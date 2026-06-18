@@ -73,6 +73,15 @@ const roomPass = $("roomPass");
 const roomPassGroup = $("roomPassGroup");
 const lobbyHint = $("lobbyHint");
 const authToggle = $("authToggle");
+const lobbyFriendsList = $("lobbyFriendsList");
+const sidebarFriendsList = $("sidebarFriendsList");
+const addFriendBtn = $("addFriendBtn");
+const friendInputRow = $("friendInputRow");
+const friendNameInput = $("friendNameInput");
+const friendConfirmBtn = $("friendConfirmBtn");
+const sidebarAddFriend = $("sidebarAddFriend");
+
+const FRIENDS_KEY = "sv_friends";
 
 function log(...args) {
   console.log("[SV]", ...args);
@@ -255,6 +264,82 @@ $("registerBtn").addEventListener("click", register);
 
 $("logoutBtn").addEventListener("click", logout);
 
+/* ── Friends ────────────────────────────────────── */
+
+function getFriends() {
+  try {
+    return JSON.parse(localStorage.getItem(FRIENDS_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFriends(f) {
+  localStorage.setItem(FRIENDS_KEY, JSON.stringify(f));
+}
+
+function renderFriends() {
+  const friends = getFriends();
+  const currentNames = peerNames ? Object.values(peerNames) : [];
+  const onlineFriends = friends.filter((f) => currentNames.includes(f));
+  const offlineFriends = friends.filter((f) => !onlineFriends.includes(f));
+
+  [lobbyFriendsList, sidebarFriendsList].forEach((list) => {
+    if (!list) return;
+    list.innerHTML = "";
+    if (!friends.length) {
+      list.innerHTML = '<div class="friend-item" style="color:#585b70;font-size:11px;">No friends yet</div>';
+      return;
+    }
+    [...onlineFriends, ...offlineFriends].forEach((f) => {
+      const d = document.createElement("div");
+      d.className = "friend-item";
+      const isOnline = onlineFriends.includes(f);
+      d.innerHTML = `<span>${f}</span><span class="friend-status${isOnline ? " online" : ""}">${isOnline ? "● Online" : "○ Offline"}</span><button class="friend-remove" data-friend="${f}">&times;</button>`;
+      d.querySelector(".friend-remove").addEventListener("click", () => {
+        const updated = getFriends().filter((x) => x !== f);
+        saveFriends(updated);
+        renderFriends();
+      });
+      list.appendChild(d);
+    });
+  });
+}
+
+function addFriend(name) {
+  if (!name) return;
+  const friends = getFriends();
+  if (friends.includes(name)) return;
+  friends.push(name);
+  saveFriends(friends);
+  renderFriends();
+}
+
+addFriendBtn.addEventListener("click", () => {
+  friendInputRow.style.display = friendInputRow.style.display === "none" ? "flex" : "none";
+  if (friendInputRow.style.display !== "none") friendNameInput.focus();
+});
+
+friendConfirmBtn.addEventListener("click", () => {
+  const name = friendNameInput.value.trim();
+  if (name) {
+    addFriend(name);
+    friendNameInput.value = "";
+    friendInputRow.style.display = "none";
+  }
+});
+
+friendNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") friendConfirmBtn.click();
+});
+
+sidebarAddFriend.addEventListener("click", () => {
+  const name = prompt("Enter friend's username:");
+  if (name) addFriend(name.trim());
+});
+
+renderFriends();
+
 /* ── Auto-login ─────────────────────────────────── */
 
 const session = getSession();
@@ -375,6 +460,7 @@ function updateUserList() {
   document
     .querySelectorAll(".user-item:not(#selfUserItem)")
     .forEach((e) => e.remove());
+  const friends = getFriends();
   let count = 1;
   for (const pid in peerNames) {
     if (pid === myPeerId) continue;
@@ -387,12 +473,21 @@ function updateUserList() {
     a.style.background = getColorForPeer(pid);
     a.textContent = (peerNames[pid] || "?")[0].toUpperCase();
     const s = document.createElement("span");
-    s.textContent = peerNames[pid] || pid.slice(0, 6);
+    const name = peerNames[pid] || pid.slice(0, 6);
+    s.textContent = name;
+    if (friends.includes(name)) {
+      const star = document.createElement("span");
+      star.textContent = " ★";
+      star.style.color = "#f9e2af";
+      star.title = "Friend";
+      s.appendChild(star);
+    }
     div.appendChild(a);
     div.appendChild(s);
     userList.appendChild(div);
   }
   userCount.textContent = count;
+  renderFriends();
 }
 
 function getOrCreateContainer(pid, name, isScreen) {
