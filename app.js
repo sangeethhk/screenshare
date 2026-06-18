@@ -56,6 +56,8 @@ const chatMessagesMobile = $("chatMessagesMobile");
 const chatInputMobile = $("chatInputMobile");
 const chatSendBtnMobile = $("chatSendBtnMobile");
 const fullscreenBtn = $("fullscreenBtn");
+const captionsBtn = $("captionsBtn");
+const langSelect = $("langSelect");
 const mainLobby = $("mainLobby");
 const loginForm = $("loginForm");
 const registerForm = $("registerForm");
@@ -737,6 +739,10 @@ function handleDataMessage(id, raw) {
         removePeer(id);
       }
       break;
+
+    case "caption":
+      handleCaptionMsg(id, data);
+      break;
   }
 }
 
@@ -799,6 +805,104 @@ function toggleCam() {
       }
     });
   }
+}
+
+/* ── Captions / Translation ─────────────────────── */
+
+let captionsOn = false;
+let recognition = null;
+let captionsRestartTimer = null;
+
+function getLangLabel(code) {
+  const m = { en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", hi: "Hindi", "zh-CN": "Chinese", ja: "Japanese", ko: "Korean", ar: "Arabic", ru: "Russian", it: "Italian", nl: "Dutch", tr: "Turkish", vi: "Vietnamese", th: "Thai" };
+  return m[code] || code;
+}
+
+function startCaptions() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    addSystemMsg("Speech recognition not supported in this browser");
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        const text = e.results[i][0].transcript.trim();
+        if (text) {
+          broadcastData(JSON.stringify({ type: "caption", text, author: username }));
+          addCaptionMsg(username, text);
+        }
+      }
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === "no-speech") return;
+    warn("Speech error:", e.error);
+    if (e.error === "not-allowed") {
+      addSystemMsg("Microphone access denied for captions");
+      stopCaptions();
+    }
+  };
+
+  recognition.onend = () => {
+    if (captionsOn) {
+      captionsRestartTimer = setTimeout(() => {
+        try { recognition.start(); } catch {}
+      }, 200);
+    }
+  };
+
+  try { recognition.start(); } catch (e) { warn("Recognition start failed:", e); }
+}
+
+function stopCaptions() {
+  if (captionsRestartTimer) { clearTimeout(captionsRestartTimer); captionsRestartTimer = null; }
+  if (recognition) {
+    try { recognition.stop(); } catch {}
+    recognition = null;
+  }
+}
+
+function toggleCaptions() {
+  captionsOn = !captionsOn;
+  captionsBtn.classList.toggle("captions-on", captionsOn);
+  captionsBtn.title = captionsOn ? "Captions On" : "Captions Off";
+  if (captionsOn) {
+    startCaptions();
+    addSystemMsg("Captions on — speech will appear in chat");
+  } else {
+    stopCaptions();
+    addSystemMsg("Captions off");
+  }
+}
+
+function addCaptionMsg(author, text) {
+  const targetLang = langSelect.value;
+  if (targetLang && targetLang !== "en") {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`;
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => {
+        const translated = d.responseData?.translatedText || text;
+        addChatMsg("🎤 " + author, text + " → " + translated);
+      })
+      .catch(() => {
+        addChatMsg("🎤 " + author, text);
+      });
+  } else {
+    addChatMsg("🎤 " + author, text);
+  }
+}
+
+function handleCaptionMsg(id, data) {
+  addCaptionMsg(data.author, data.text);
 }
 
 async function startScreenShare() {
@@ -884,9 +988,11 @@ function leaveRoom() {
   sharingScreen = false;
   muted = false;
   cameraOff = false;
+  if (captionsOn) toggleCaptions();
   screenBtn.classList.remove("screen-active");
   camBtn.classList.remove("off");
   micBtn.classList.remove("off");
+  captionsBtn.classList.remove("captions-on");
   isHost = false;
 
   document
@@ -1071,6 +1177,7 @@ fullscreenBtn.addEventListener("click", () => {
     document.exitFullscreen();
   }
 });
+captionsBtn.addEventListener("click", toggleCaptions);
 chatSendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendChat();
