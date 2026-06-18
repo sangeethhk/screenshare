@@ -81,8 +81,6 @@ const friendNameInput = $("friendNameInput");
 const friendConfirmBtn = $("friendConfirmBtn");
 const sidebarAddFriend = $("sidebarAddFriend");
 
-const FRIENDS_KEY = "sv_friends";
-
 function log(...args) {
   console.log("[SV]", ...args);
 }
@@ -91,98 +89,101 @@ function warn(...args) {
   console.warn("[SV]", ...args);
 }
 
+/* ── Firebase ────────────────────────────────────── */
+
+firebase.initializeApp({
+  apiKey: "AIzaSyBxxOAtGTfD5gv_VmCmLBGHJKTatxmNuG0",
+  authDomain: "androidtest-9e113.firebaseapp.com",
+  projectId: "androidtest-9e113",
+  storageBucket: "androidtest-9e113.firebasestorage.app",
+  messagingSenderId: "435640353012",
+  appId: "1:435640353012:web:d981d5eb5ddd7d42c95ea1",
+});
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentUser = null;
+
 /* ── Auth ────────────────────────────────────────── */
 
-const AUTH_KEY = "sv_users";
-const SESSION_KEY = "sv_session";
-
-function getUsers() {
-  try {
-    return JSON.parse(localStorage.getItem(AUTH_KEY)) || {};
-  } catch {
-    return {};
-  }
-}
-
-function saveUsers(u) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify(u));
-}
-
-function getSession() {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY));
-  } catch {
-    return null;
-  }
-}
-
-function saveSession(user) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-}
-
-function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
-}
-
-function hashPass(pw) {
-  let h = 0;
-  for (let i = 0; i < pw.length; i++)
-    h = (Math.imul(31, h) + pw.charCodeAt(i)) | 0;
-  return h.toString(16);
-}
-
 function register() {
-  const user = registerUser.value.trim().toLowerCase();
-  const display = registerDisplay.value.trim() || user;
+  const email = registerUser.value.trim();
+  const display = registerDisplay.value.trim() || email.split("@")[0];
   const pass = registerPass.value;
   const err = $("registerError");
-  if (!user || !pass) {
-    err.textContent = "Username and password required";
+  if (!email || !pass) {
+    err.textContent = "Email and password required";
     return;
   }
-  if (user.length < 2) {
-    err.textContent = "Username must be at least 2 characters";
+  if (pass.length < 6) {
+    err.textContent = "Password must be at least 6 characters";
     return;
   }
-  if (pass.length < 3) {
-    err.textContent = "Password must be at least 3 characters";
-    return;
-  }
-  const users = getUsers();
-  if (users[user]) {
-    err.textContent = "Username already taken";
-    return;
-  }
-  err.textContent = "";
-  users[user] = { display, pass: hashPass(pass) };
-  saveUsers(users);
-  saveSession({ user, display });
-  enterLobby(user, display);
+  err.textContent = "Creating account...";
+  auth.createUserWithEmailAndPassword(email, pass)
+    .then((cred) => {
+      return cred.user.updateProfile({ displayName: display });
+    })
+    .then(() => {
+      return db.collection("users").doc(auth.currentUser.uid).set({
+        displayName: display,
+        email: email,
+      });
+    })
+    .then(() => {
+      err.textContent = "";
+      registerForm.style.display = "none";
+      mainLobby.style.display = "block";
+    })
+    .catch((e) => {
+      err.textContent = e.message;
+    });
 }
 
 function login() {
-  const user = loginUser.value.trim().toLowerCase();
+  const email = loginUser.value.trim();
   const pass = loginPass.value;
   const err = $("loginError");
-  if (!user || !pass) {
-    err.textContent = "Username and password required";
+  if (!email || !pass) {
+    err.textContent = "Email and password required";
     return;
   }
-  const users = getUsers();
-  const entry = users[user];
-  if (!entry || entry.pass !== hashPass(pass)) {
-    err.textContent = "Invalid username or password";
-    return;
-  }
-  err.textContent = "";
-  saveSession({ user, display: entry.display });
-  enterLobby(user, entry.display);
+  err.textContent = "Signing in...";
+  auth.signInWithEmailAndPassword(email, pass)
+    .then(() => {
+      err.textContent = "";
+      loginForm.style.display = "none";
+      mainLobby.style.display = "block";
+    })
+    .catch((e) => {
+      err.textContent = e.message;
+    });
 }
 
 function logout() {
-  clearSession();
-  location.reload();
+  auth.signOut();
 }
+
+auth.onAuthStateChanged((user) => {
+  currentUser = user;
+  if (user) {
+    db.collection("users").doc(user.uid).get().then((snap) => {
+      const data = snap.data() || {};
+      const display = data.displayName || user.displayName || user.email.split("@")[0];
+      enterLobby(user.uid, display);
+      loadFriends();
+    });
+  } else {
+    guestName.style.display = "block";
+    signedInBar.style.display = "none";
+    authToggle.style.display = "block";
+    clearFriends();
+    if (document.querySelector("#room").style.display !== "none") {
+      leaveRoom();
+    }
+  }
+});
 
 function showMainLobby() {
   mainLobby.style.display = "block";
@@ -266,28 +267,46 @@ $("logoutBtn").addEventListener("click", logout);
 
 /* ── Friends ────────────────────────────────────── */
 
-function getFriends() {
-  try {
-    return JSON.parse(localStorage.getItem(FRIENDS_KEY)) || [];
-  } catch {
-    return [];
-  }
+let friendsList = [];
+let friendsUnsub = null;
+
+function loadFriends() {
+  if (friendsUnsub) { friendsUnsub(); friendsUnsub = null; }
+  if (!currentUser) { friendsList = []; renderFriends(); return; }
+  friendsUnsub = db.collection("users").doc(currentUser.uid).collection("friends")
+    .onSnapshot((snap) => {
+      friendsList = snap.docs.map((d) => d.id);
+      renderFriends();
+    }, (err) => warn("Friends load error:", err));
 }
 
-function saveFriends(f) {
-  localStorage.setItem(FRIENDS_KEY, JSON.stringify(f));
+function clearFriends() {
+  friendsList = [];
+  renderFriends();
+}
+
+function addFriend(name) {
+  if (!name || !currentUser) return;
+  if (friendsList.includes(name)) return;
+  db.collection("users").doc(currentUser.uid).collection("friends").doc(name).set({
+    addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+function removeFriend(name) {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).collection("friends").doc(name).delete();
 }
 
 function renderFriends() {
-  const friends = getFriends();
   const currentNames = peerNames ? Object.values(peerNames) : [];
-  const onlineFriends = friends.filter((f) => currentNames.includes(f));
-  const offlineFriends = friends.filter((f) => !onlineFriends.includes(f));
+  const onlineFriends = friendsList.filter((f) => currentNames.includes(f));
+  const offlineFriends = friendsList.filter((f) => !onlineFriends.includes(f));
 
   [lobbyFriendsList, sidebarFriendsList].forEach((list) => {
     if (!list) return;
     list.innerHTML = "";
-    if (!friends.length) {
+    if (!friendsList.length) {
       list.innerHTML = '<div class="friend-item" style="color:#585b70;font-size:11px;">No friends yet</div>';
       return;
     }
@@ -296,26 +315,14 @@ function renderFriends() {
       d.className = "friend-item";
       const isOnline = onlineFriends.includes(f);
       d.innerHTML = `<span>${f}</span><span class="friend-status${isOnline ? " online" : ""}">${isOnline ? "● Online" : "○ Offline"}</span><button class="friend-remove" data-friend="${f}">&times;</button>`;
-      d.querySelector(".friend-remove").addEventListener("click", () => {
-        const updated = getFriends().filter((x) => x !== f);
-        saveFriends(updated);
-        renderFriends();
-      });
+      d.querySelector(".friend-remove").addEventListener("click", () => removeFriend(f));
       list.appendChild(d);
     });
   });
 }
 
-function addFriend(name) {
-  if (!name) return;
-  const friends = getFriends();
-  if (friends.includes(name)) return;
-  friends.push(name);
-  saveFriends(friends);
-  renderFriends();
-}
-
 addFriendBtn.addEventListener("click", () => {
+  if (!currentUser) { alert("Sign in to add friends"); return; }
   friendInputRow.style.display = friendInputRow.style.display === "none" ? "flex" : "none";
   if (friendInputRow.style.display !== "none") friendNameInput.focus();
 });
@@ -334,18 +341,12 @@ friendNameInput.addEventListener("keydown", (e) => {
 });
 
 sidebarAddFriend.addEventListener("click", () => {
+  if (!currentUser) { alert("Sign in to add friends"); return; }
   const name = prompt("Enter friend's username:");
   if (name) addFriend(name.trim());
 });
 
 renderFriends();
-
-/* ── Auto-login ─────────────────────────────────── */
-
-const session = getSession();
-if (session) {
-  enterLobby(session.user, session.display);
-}
 
 /* ── Mobile chat overlay ────────────────────────── */
 
@@ -460,7 +461,7 @@ function updateUserList() {
   document
     .querySelectorAll(".user-item:not(#selfUserItem)")
     .forEach((e) => e.remove());
-  const friends = getFriends();
+  const friends = friendsList;
   let count = 1;
   for (const pid in peerNames) {
     if (pid === myPeerId) continue;

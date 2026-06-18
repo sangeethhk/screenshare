@@ -94,8 +94,8 @@
       </div>
       <div id="loginError" class="form-error"></div>
       <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="loginUser" placeholder="username" autocomplete="username" />
+        <label>Email</label>
+        <input type="email" id="loginUser" placeholder="email" autocomplete="email" />
       </div>
       <div class="form-group">
         <label>Password</label>
@@ -122,8 +122,8 @@
       </div>
       <div id="registerError" class="form-error"></div>
       <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="regUser" placeholder="choose a username" autocomplete="username" />
+        <label>Email</label>
+        <input type="email" id="regUser" placeholder="email" autocomplete="email" />
       </div>
       <div class="form-group">
         <label>Display name</label>
@@ -274,6 +274,9 @@
 
   <div id="debugLog" style="display:none; position:fixed; bottom:0; left:0; right:0; max-height:200px; overflow-y:auto; background:rgba(0,0,0,0.9); color:#0f0; font:12px monospace; padding:8px; z-index:999; white-space:pre-wrap;"></div>
   <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
