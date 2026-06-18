@@ -103,7 +103,6 @@ firebase.initializeApp({
 });
 
 const auth = firebase.auth();
-const db = firebase.firestore();
 
 let currentUser = null;
 
@@ -126,12 +125,6 @@ function register() {
   auth.createUserWithEmailAndPassword(email, pass)
     .then((cred) => {
       return cred.user.updateProfile({ displayName: display });
-    })
-    .then(() => {
-      return db.collection("users").doc(auth.currentUser.uid).set({
-        displayName: display,
-        email: email,
-      });
     })
     .then(() => {
       err.textContent = "";
@@ -170,17 +163,12 @@ function logout() {
 auth.onAuthStateChanged((user) => {
   currentUser = user;
   if (user) {
-    db.collection("users").doc(user.uid).get().then((snap) => {
-      const data = snap.data() || {};
-      const display = data.displayName || user.displayName || user.email.split("@")[0];
-      enterLobby(user.uid, display);
-      loadFriends();
-    });
+    const display = user.displayName || user.email.split("@")[0];
+    enterLobby(user.uid, display);
   } else {
     guestName.style.display = "block";
     signedInBar.style.display = "none";
     authToggle.style.display = "block";
-    clearFriends();
     if (document.querySelector("#room").style.display !== "none") {
       leaveRoom();
     }
@@ -267,48 +255,29 @@ $("registerBtn").addEventListener("click", register);
 
 $("logoutBtn").addEventListener("click", logout);
 
-/* ── Friends ────────────────────────────────────── */
+/* ── Friends (localStorage) ─────────────────────── */
 
-let friendsList = [];
-let friendsUnsub = null;
+const FRIENDS_KEY = "sv_friends";
 
-function loadFriends() {
-  if (friendsUnsub) { friendsUnsub(); friendsUnsub = null; }
-  if (!currentUser) { friendsList = []; renderFriends(); return; }
-  friendsUnsub = db.collection("users").doc(currentUser.uid).collection("friends")
-    .onSnapshot((snap) => {
-      friendsList = snap.docs.map((d) => d.id);
-      renderFriends();
-    }, (err) => warn("Friends load error:", err));
+function getFriends() {
+  try { return JSON.parse(localStorage.getItem(FRIENDS_KEY)) || []; }
+  catch { return []; }
 }
 
-function clearFriends() {
-  friendsList = [];
-  renderFriends();
-}
-
-function addFriend(name) {
-  if (!name || !currentUser) return;
-  if (friendsList.includes(name)) return;
-  db.collection("users").doc(currentUser.uid).collection("friends").doc(name).set({
-    addedAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
-}
-
-function removeFriend(name) {
-  if (!currentUser) return;
-  db.collection("users").doc(currentUser.uid).collection("friends").doc(name).delete();
+function saveFriends(f) {
+  localStorage.setItem(FRIENDS_KEY, JSON.stringify(f));
 }
 
 function renderFriends() {
+  const friends = getFriends();
   const currentNames = peerNames ? Object.values(peerNames) : [];
-  const onlineFriends = friendsList.filter((f) => currentNames.includes(f));
-  const offlineFriends = friendsList.filter((f) => !onlineFriends.includes(f));
+  const onlineFriends = friends.filter((f) => currentNames.includes(f));
+  const offlineFriends = friends.filter((f) => !onlineFriends.includes(f));
 
   [lobbyFriendsList, sidebarFriendsList].forEach((list) => {
     if (!list) return;
     list.innerHTML = "";
-    if (!friendsList.length) {
+    if (!friends.length) {
       list.innerHTML = '<div class="friend-item" style="color:#585b70;font-size:11px;">No friends yet</div>';
       return;
     }
@@ -317,25 +286,32 @@ function renderFriends() {
       d.className = "friend-item";
       const isOnline = onlineFriends.includes(f);
       d.innerHTML = `<span>${f}</span><span class="friend-status${isOnline ? " online" : ""}">${isOnline ? "● Online" : "○ Offline"}</span><button class="friend-remove" data-friend="${f}">&times;</button>`;
-      d.querySelector(".friend-remove").addEventListener("click", () => removeFriend(f));
+      d.querySelector(".friend-remove").addEventListener("click", () => {
+        saveFriends(getFriends().filter((x) => x !== f));
+        renderFriends();
+      });
       list.appendChild(d);
     });
   });
 }
 
+function addFriend(name) {
+  if (!name) return;
+  const friends = getFriends();
+  if (friends.includes(name)) return;
+  friends.push(name);
+  saveFriends(friends);
+  renderFriends();
+}
+
 addFriendBtn.addEventListener("click", () => {
-  if (!currentUser) { alert("Sign in to add friends"); return; }
   friendInputRow.style.display = friendInputRow.style.display === "none" ? "flex" : "none";
   if (friendInputRow.style.display !== "none") friendNameInput.focus();
 });
 
 friendConfirmBtn.addEventListener("click", () => {
   const name = friendNameInput.value.trim();
-  if (name) {
-    addFriend(name);
-    friendNameInput.value = "";
-    friendInputRow.style.display = "none";
-  }
+  if (name) { addFriend(name); friendNameInput.value = ""; friendInputRow.style.display = "none"; }
 });
 
 friendNameInput.addEventListener("keydown", (e) => {
@@ -343,8 +319,7 @@ friendNameInput.addEventListener("keydown", (e) => {
 });
 
 sidebarAddFriend.addEventListener("click", () => {
-  if (!currentUser) { alert("Sign in to add friends"); return; }
-  const name = prompt("Enter friend's username:");
+  const name = prompt("Enter friend's name:");
   if (name) addFriend(name.trim());
 });
 
@@ -463,7 +438,7 @@ function updateUserList() {
   document
     .querySelectorAll(".user-item:not(#selfUserItem)")
     .forEach((e) => e.remove());
-  const friends = friendsList;
+  const friends = getFriends();
   let count = 1;
   for (const pid in peerNames) {
     if (pid === myPeerId) continue;
@@ -1037,13 +1012,14 @@ async function joinRoom() {
   connectionStatus.textContent = "Connecting...";
   connectionStatus.style.color = "#f9e2af";
 
-  const hashRoom = window.location.hash.slice(1);
+  const hashParts = window.location.hash.slice(1).split("|");
+  const hashRoom = hashParts[0];
+  const hashHostId = hashParts[1];
   isHost = !hashRoom || hashRoom !== r;
   log(`isHost: ${isHost} (hash: "${hashRoom}", room: "${r}")`);
-  if (!isHost) window.location.hash = r;
 
   if (isHost) {
-    myPeerId = `sv-${r}`;
+    myPeerId = `scv-${r}-${Date.now()}`;
     roomPassword = roomPass.value.trim();
     addSystemMsg(`Room "${r}" created. Share the invite link.`);
     if (roomPassword) {
@@ -1051,11 +1027,8 @@ async function joinRoom() {
     }
     connectionStatus.textContent = "Hosting - waiting for others...";
     connectionStatus.style.color = "#f9e2af";
-    const url = `${window.location.origin}${window.location.pathname}#${r}`;
-    inviteBox.style.display = "block";
-    inviteLink.value = url;
   } else {
-    myPeerId = `sv-${r}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    myPeerId = `scv-g-${r}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     addSystemMsg(`Joining "${r}"...`);
     connectionStatus.textContent = "Connecting to host...";
     connectionStatus.style.color = "#f9e2af";
@@ -1079,7 +1052,7 @@ async function joinRoom() {
     connectionStatus.style.color = "#f9e2af";
 
     if (!isHost) {
-      const hostId = `sv-${r}`;
+      const hostId = hashHostId || `scv-${r}`;
       log(`Connecting to host ${hostId}...`);
       const conn = peer.connect(hostId, { reliable: true });
       conn.on("open", () => {
@@ -1094,6 +1067,9 @@ async function joinRoom() {
       });
     } else {
       log("Waiting for incoming connections...");
+      const url = `${window.location.origin}${window.location.pathname}#${r}|${id}`;
+      inviteBox.style.display = "block";
+      inviteLink.value = url;
     }
     updateUserList();
   });
@@ -1115,7 +1091,35 @@ async function joinRoom() {
 
   peer.on("error", (err) => {
     warn("PeerJS error:", err.type, err.message);
-    addSystemMsg(`Error: ${err.type}. ${err.type === "unavailable-id" ? "Room name already in use." : err.type === "peer-unavailable" ? "Host not found - the room may be empty." : ""} Try again.`);
+    if (err.type === "unavailable-id" && isHost) {
+      addSystemMsg("Retrying with a different ID...");
+      peer.destroy();
+      peer = null;
+      myPeerId = `scv-${r}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      peer = new Peer(myPeerId, {
+        host: PEER_HOST, port: PEER_PORT, path: PEER_PATH,
+        config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
+      });
+      peer.on("open", (id) => {
+        myPeerId = id;
+        peerNames[id] = username;
+        addSystemMsg(`Room "${r}" created. Share the invite link.`);
+        const url = `${window.location.origin}${window.location.pathname}#${r}|${id}`;
+        inviteBox.style.display = "block";
+        inviteLink.value = url;
+        connectionStatus.textContent = "Hosting - waiting for others...";
+        connectionStatus.style.color = "#f9e2af";
+      });
+      peer.on("connection", (conn) => {
+        dataConns[conn.peer] = conn;
+        conn.on("open", () => {});
+        conn.on("data", (d) => handleDataMessage(conn.peer, d));
+        conn.on("close", () => removePeer(conn.peer));
+      });
+      peer.on("call", answerCall);
+      return;
+    }
+    addSystemMsg(`Error: ${err.type}. Try again.`);
   });
 
   peer.on("disconnected", () => {
